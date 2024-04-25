@@ -9,6 +9,11 @@
 #
 # Usage: ./import_sync.sh
 #
+# In SUMA on both the target and host server you need to create an Organization,
+# this will be used for the importing of the data. Save this org_name and its
+# password in the import.yaml file inside the `scripts` directory along side the
+# `import.sh` script.
+#
 # YAML Configuration Requirements:
 #   - host: The hostname or IP address of the remote server.
 #   - pass: The password for the XML-RPC user.
@@ -17,9 +22,10 @@
 # ---
 # version: 2
 # host: example.com
+# uname: org_name
 # pass: yourpassword
 #
-# Notes: Ensure the YAML file 'rgsimportexport.yaml' is located in the same
+# Notes: Ensure the YAML file 'importexport.yaml' is located in the same
 #        directory as this script. Requires rsync, SSH access, and permissions
 #        to read the specified directories.
 
@@ -27,14 +33,14 @@
 cd "$(dirname "$0")" || exit 1
 
 # Set variables
-yaml_file="./rgsimportexport.yaml"
+yaml_file="./import.yaml"
 if [ ! -f "$yaml_file" ]; then
     echo "Configuration file not found: $yaml_file"
     exit 1
 fi
 host=$(awk '/^host:/ { print $2 }' "$yaml_file")
+uname=$(awk '/^uname:/ { print $2 }' "$yaml_file")
 pass=$(awk '/^pass:/ { print $2 }' "$yaml_file")
-uname='rgsimportexport'
 basedir='/mnt/import'
 log_dir="/mnt/logs"
 log_file="${log_dir}/$(date +"%Y-%m-%d")-import.log"
