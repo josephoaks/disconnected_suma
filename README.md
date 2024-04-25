@@ -52,13 +52,31 @@ Import
 
 ## Usage
 
-Step 1. User Createion
+Step 1. Organization creation
+
+In order to use the ISSv2 you must create an Organization within the SUMA WebUI to do this
+*Admin -> Organization -> Create Orgainzation*
+
+```
+Input the Organization Name: org_name
+Input the Desired Login: org_name
+Input the Desiered Password: <password>
+Input the Email: can be real or a junk email
+Input the First, Last Names
+```
+**This Organization will be used for the export/import and will be created on both the host
+and target SUMA servers.**
+
+**NOTE: if multiple Organizations take note of the number for this one created it will be used
+in the export scripts for `orgLimit=` option in the `inter-server-sync export` options.**
+
+Step 2. User Createion
 
 First thing to do is setup an `rsyncuser` on both servers, us an SSH key without a password
 for automation. On the target server create the SSH key, on the host server add the key
 to the ~rsyncuser/.ssh/authorized_keys file
 
-Step 2. File structure
+Step 3. File structure
 
 The default setup assumes `/mnt/import` and `/mnt/export` to be NFS/SAN mount so as not
 to fill up primary drives, this can be adusted in the scripts to meet any directory
@@ -73,13 +91,13 @@ by checking the API to determine if a channel had updates today or yesterday and
 export the channel if it did, if not then that channel is skipped. This makes the 
 exports smaller making the data transerfer times shorter and the imports much faster.
 
-Step 3. Logging
+Step 4. Logging
 
 By default logging is setup to get in `/mnt/logs` for both the import and export servers.
 These are daily log files that do not take up much space but it is recommended to clear
 them out at least monthly.
 
-Step 4. Execution
+Step 5. Execution
 
 Initial Export:
  ```
