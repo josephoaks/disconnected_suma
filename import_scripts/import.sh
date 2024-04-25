@@ -55,14 +55,14 @@ log() {
 }
 
 # Clear source directory before rsync of new data.
-#rm -rf "$basedir"/updates/*
-#rm -rf "$basedir"/initial/*
+rm -rf "$basedir"/updates/*
+rm -rf "$basedir"/initial/*
 
 # SSH Configuration variables.
 ssh_user='rsyncuser'
 ssh_key="id_rsa"
 ssh_options="-i /home/${ssh_user}/.ssh/${ssh_key}"
-#rsync -avP -e "ssh ${ssh_options}" "${ssh_user}@${host}":/ "$basedir" >> "$rsync_log" 2>&1
+rsync -avP -e "ssh ${ssh_options}" "${ssh_user}@${host}":/ "$basedir" >> "$rsync_log" 2>&1
 
 process_directory() {
   if [ -z "$(find "$1" -mindepth 1 -type d -print -quit)" ]; then
