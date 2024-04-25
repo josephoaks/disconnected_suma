@@ -1,0 +1,5 @@
+---
+version: 2
+host: fqdn
+uname: org_name
+pass: super_secret
