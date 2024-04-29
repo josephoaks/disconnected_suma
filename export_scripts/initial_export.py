@@ -148,6 +148,10 @@ selected_option = user_select_parent(parent_child_map)
 
 # Determine file name and channels to export
 channels_file = os.path.join(SCRIPTS, "channels.txt")
+
+with open(channels_file, 'w') as f:
+    f.truncate()
+
 if selected_option is None:
     channels_to_export = []
     for parent, children in parent_child_map.items():
