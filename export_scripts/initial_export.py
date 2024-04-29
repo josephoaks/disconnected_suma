@@ -106,68 +106,71 @@ def channel_hierarchy(client, key):
 
 def user_select_parent(parent_child_map):
     parents = list(parent_child_map.keys())
-    print("Please select a parent channel to export:")
+    selected_parents = []
+    print("Please select a parent channel to export (Enter 0 when done):")
     for i, parent in enumerate(parents, start=1):
         print(f"{i}. {parent}")
     print(f"{len(parents) + 1}. Export all channels")
     while True:
         try:
             choice = int(input("Enter your choice: ")) - 1
+            if choice == -1:
+                break
             if choice == len(parents):
                 return None
             if 0 <= choice < len(parents):
-                return parents[choice]
+                selected_parents.append(parents[choice])
+                print(f"Selected {parents[choice]}. Add more or press 0 to continue.")
             else:
                 print("Invalid choice, please try again.")
         except ValueError:
             print("Please enter a valid integer.")
+    return selected_parents
 
-def write_hierarchy(parent_child_map, selected_parent, file_path):
+def write_hierarchy(parent_child_map, selected_parents, file_path):
     with open(file_path, 'w') as file:
-        if selected_parent:
-            file.write(f"{selected_parent}\n")
-            for child in sorted(parent_child_map[selected_parent]):
-                file.write(f"    {child}\n")
+        if selected_parents is not None:
+            for parent in selected_parents:
+                file.write(f"{parent}\n")
+                for child in sorted(parent_child_map[parent]):
+                    file.write(f"    {child}\n")
         else:
             for parent, children in sorted(parent_child_map.items()):
                 file.write(f"{parent}\n")
                 for child in sorted(children):
                     file.write(f"    {child}\n")
 
-# Initialize directories and logging
+# Main script starts here
 setup_directories()
 log_file_path = setup_logging()
-
-# Create XML-RPC client
 client, key = create_client()
-
-# Fetch channel hierarchy
 parent_child_map = channel_hierarchy(client, key)
-
-# Get channel hierarchy and allow user to select parent or all
-selected_option = user_select_parent(parent_child_map)
+selected_parents = user_select_parent(parent_child_map)
 
 with open(CHANNELS_FILE, 'w') as f:
     f.truncate()
 
-if selected_option is None:
+if selected_parents is None:
     channels_to_export = []
     for parent, children in parent_child_map.items():
         channels_to_export.append(parent)
         channels_to_export.extend(children)
-else:
-    channels_to_export = [selected_option] + parent_child_map[selected_option]
+elif selected_parents:
+    channels_to_export = []
+    for selected_parent in selected_parents:
+        channels_to_export.append(selected_parent)
+        channels_to_export.extend(parent_child_map[selected_parent])
 
-write_hierarchy(parent_child_map, selected_option, CHANNELS_FILE)
+write_hierarchy(parent_child_map, selected_parents, CHANNELS_FILE)
 
 # Process channel exports
 for channel in channels_to_export:
     product_dir = os.path.join(OUTPUT_DIR, channel)
     os.makedirs(product_dir, exist_ok=True)
     options_dict = {
-            "outputDir": product_dir,
-            "logLevel": "error",
-            "orgLimit": "2"
+        "outputDir": product_dir,
+        "logLevel": "error",
+        "orgLimit": "2"
     }
     options = ' '.join([f"--{opt}='{val}'" for opt, val in options_dict.items()])
     command = f"inter-server-sync export --channels='{channel}' {options}"
