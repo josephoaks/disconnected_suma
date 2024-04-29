@@ -59,6 +59,7 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 SCRIPTS = os.path.join(BASE_DIR, "scripts")
 RSYNC_USER = "rsyncuser"
 RSYNC_GROUP = "users"
+CHANNELS_FILE = os.path.join(SCRIPTS, "channels.txt")
 TODAY = datetime.date.today().strftime("%Y-%m-%d")
 
 def create_client():
@@ -146,10 +147,7 @@ parent_child_map = channel_hierarchy(client, key)
 # Get channel hierarchy and allow user to select parent or all
 selected_option = user_select_parent(parent_child_map)
 
-# Determine file name and channels to export
-channels_file = os.path.join(SCRIPTS, "channels.txt")
-
-with open(channels_file, 'w') as f:
+with open(CHANNELS_FILE, 'w') as f:
     f.truncate()
 
 if selected_option is None:
@@ -160,7 +158,7 @@ if selected_option is None:
 else:
     channels_to_export = [selected_option] + parent_child_map[selected_option]
 
-write_hierarchy(parent_child_map, selected_option, channels_file)
+write_hierarchy(parent_child_map, selected_option, CHANNELS_FILE)
 
 # Process channel exports
 for channel in channels_to_export:
