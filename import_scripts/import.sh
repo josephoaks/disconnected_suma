@@ -55,8 +55,14 @@ log() {
 }
 
 # Clear source directory before rsync of new data.
-rm -rf "$basedir"/updates/*
-rm -rf "$basedir"/initial/*
+cleanup() {
+  log "Cleaning up directories and channels.txt file."
+  rm -rf "$basedir"/updates/*
+  rm -rf "$basedir"/initial/*
+  rm -f "$basedir"/scripts/channels.txt
+}
+
+cleanup
 
 # SSH Configuration variables.
 ssh_user='rsyncuser'
