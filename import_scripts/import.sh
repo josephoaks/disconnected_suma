@@ -25,7 +25,7 @@
 # uname: org_name
 # pass: yourpassword
 #
-# Notes: Ensure the YAML file 'importexport.yaml' is located in the same
+# Notes: Ensure the YAML file 'import.yaml' is located in the same
 #        directory as this script. Requires rsync, SSH access, and permissions
 #        to read the specified directories.
 
@@ -56,10 +56,9 @@ log() {
 
 # Clear source directory before rsync of new data.
 cleanup() {
-  log "Cleaning up directories and channels.txt file."
+  log "Cleaning up directories."
   rm -rf "$basedir"/updates/*
   rm -rf "$basedir"/initial/*
-  rm -f "$basedir"/scripts/channels.txt
 }
 
 cleanup
@@ -78,28 +77,15 @@ process_directory() {
   fi
 
   local options="--xmlRpcUser=$uname --xmlRpcPassword=$pass --logLevel=error"
-  if [ "$1" == "$basedir/initial" ]; then
-    local channels_file="$basedir/scripts/channels.txt"
-    if [ -f "$channels_file" ]; then
-      while IFS= read -r channel; do
-	channel=$(echo "$channel" | xargs)
-        if [ -d "$1/$channel" ]; then
-          inter-server-sync import --importDir="$1/$channel" $options >> "$log_file" 2>&1
-          log "Import for directory $1/$channel completed."
-        fi
-      done < "$channels_file"
-    else
-      log "Channel list not found at $channels_file"
+  for dir in "$1"/*; do
+    if [ -d "$dir" ]; then
+      inter-server-sync import --importDir="$dir" $options >> "$log_file" 2>&1
+      log "Import for directory $dir completed."
     fi
-  else
-    for dir in "$1"/*; do
-      if [ -d "$dir" ]; then
-        inter-server-sync import --importDir="$dir" $options >> "$log_file" 2>&1
-        log "Import for directory $dir completed."
-      fi
-    done
-  fi
+  done
 }
 
+log "Start of import process."
 process_directory "$basedir/updates"
 process_directory "$basedir/initial"
+log "End of import process."
