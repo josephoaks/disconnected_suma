@@ -54,13 +54,27 @@ import shlex
 
 # Constants
 BASE_DIR = "/mnt"
-OUTPUT_DIR = os.path.join(BASE_DIR, "export/initial")
+INITIAL_DIR = os.path.join(BASE_DIR, "export/initial")
+UPDATES_DIR = os.path.join(BASE_DIR, "export/updates")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
-SCRIPTS = os.path.join(BASE_DIR, "scripts")
+SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 RSYNC_USER = "rsyncuser"
 RSYNC_GROUP = "users"
-CHANNELS_FILE = os.path.join(SCRIPTS, "channels.txt")
-TODAY = datetime.date.today().strftime("%Y-%m-%d")
+CHANNELS_FILE = os.path.join(SCRIPTS_DIR, "channels.txt")
+TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
+FIXED_DATE = datetime.date(2050, 1, 1)  # Fixed 'packagesOnlyAfter' date
+COMMON_OPTIONS = {'orgLimit': '2', 'logLevel': 'error'}  # Common options for export commands
+
+def setup_directories():
+    os.makedirs(LOG_DIR, exist_ok=True)
+    shutil.rmtree(INITIAL_DIR, ignore_errors=True)
+    os.makedirs(INITIAL_DIR, exist_ok=True)
+    shutil.rmtree(UPDATES_DIR, ignore_errors=True)
+    os.makedirs(UPDATES_DIR, exist_ok=True)
+
+def setup_logging():
+    log_file_path = os.path.join(LOG_DIR, f"{TODAY}-combined-export.log")
+    return log_file_path
 
 def create_client():
     config_path = os.path.expanduser('/root/.mgr-sync')
@@ -76,15 +90,9 @@ def create_client():
     key = client.auth.login(manager_login, manager_password)
     return client, key
 
-def setup_directories():
-    os.makedirs(LOG_DIR, exist_ok=True)
-    if os.path.exists(OUTPUT_DIR):
-        shutil.rmtree(OUTPUT_DIR)
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-def setup_logging():
-    log_file_path = os.path.join(LOG_DIR, f"{TODAY}-initial-export.log")
-    return log_file_path
+def command_options(options_dict):
+    """Generate command line options string from dictionary."""
+    return ' '.join([f"--{opt}='{val}'" for opt, val in options_dict.items()])
 
 def channel_hierarchy(client, key):
     try:
@@ -98,7 +106,7 @@ def channel_hierarchy(client, key):
                     parent_child_map[parent_label] = []
                 parent_child_map[parent_label].append(channel["label"])
             else:
-                parent_child_map[channel["label"]] = []
+                parent_child_map[channel["label"]] = []  # Parent with no children listed as an empty list
         return parent_child_map
     except Fault as e:
         print(f"Error fetching channel hierarchy: {e}")
@@ -110,14 +118,11 @@ def user_select_parent(parent_child_map):
     print("Please select a parent channel to export (Enter 0 when done):")
     for i, parent in enumerate(parents, start=1):
         print(f"{i}. {parent}")
-    print(f"{len(parents) + 1}. Export all channels")
     while True:
         try:
             choice = int(input("Enter your choice: ")) - 1
             if choice == -1:
                 break
-            if choice == len(parents):
-                return None
             if 0 <= choice < len(parents):
                 selected_parents.append(parents[choice])
                 print(f"Selected {parents[choice]}. Add more or press 0 to continue.")
@@ -127,59 +132,49 @@ def user_select_parent(parent_child_map):
             print("Please enter a valid integer.")
     return selected_parents
 
-def write_hierarchy(parent_child_map, selected_parents, file_path):
-    with open(file_path, 'w') as file:
-        if selected_parents is not None:
-            for parent in selected_parents:
-                file.write(f"{parent}\n")
-                for child in sorted(parent_child_map[parent]):
-                    file.write(f"    {child}\n")
-        else:
-            for parent, children in sorted(parent_child_map.items()):
-                file.write(f"{parent}\n")
-                for child in sorted(children):
-                    file.write(f"    {child}\n")
+def export_initial(client, key, parent_child_map, selected_parents, log_file_path):
+    options_str = command_options(COMMON_OPTIONS)
+    for parent in selected_parents:
+        channels_to_export = [parent] + parent_child_map[parent]  # Include parent and its children
+        for channel in channels_to_export:
+            initial_dir = os.path.join(INITIAL_DIR, channel)
+            os.makedirs(initial_dir, exist_ok=True)
+            initial_export_command = f"inter-server-sync export --channels='{channel}' --outputDir='{initial_dir}' {options_str}"
+            subprocess.run(shlex.split(initial_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Log to file
+            with open(log_file_path, "a") as log_file:
+                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                log_file.write(f"{current_time} Initial export for channel {channel} completed.\n")
 
-# Main script starts here
-setup_directories()
-log_file_path = setup_logging()
-client, key = create_client()
-parent_child_map = channel_hierarchy(client, key)
-selected_parents = user_select_parent(parent_child_map)
+def export_updates(client, key, parent_child_map, selected_parents, log_file_path):
+    options_str = command_options(COMMON_OPTIONS)
+    date_str = FIXED_DATE.strftime('%Y-%m-%d')
+    for parent in selected_parents:
+        if parent_child_map[parent]:  # Check if there are child channels
+            updates_dir = os.path.join(UPDATES_DIR, parent)
+            os.makedirs(updates_dir, exist_ok=True)
+            updates_export_command = f"inter-server-sync export --channel-with-children='{parent}' --outputDir='{updates_dir}' {options_str} --packagesOnlyAfter='{date_str}'"
+            subprocess.run(shlex.split(updates_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Log to file
+            with open(log_file_path, "a") as log_file:
+                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                log_file.write(f"{current_time} Updates export for parent channel {parent} with children completed.\n")
 
-with open(CHANNELS_FILE, 'w') as f:
-    f.truncate()
-
-if selected_parents is None:
-    channels_to_export = []
-    for parent, children in parent_child_map.items():
-        channels_to_export.append(parent)
-        channels_to_export.extend(children)
-elif selected_parents:
-    channels_to_export = []
-    for selected_parent in selected_parents:
-        channels_to_export.append(selected_parent)
-        channels_to_export.extend(parent_child_map[selected_parent])
-
-write_hierarchy(parent_child_map, selected_parents, CHANNELS_FILE)
-
-# Process channel exports
-for channel in channels_to_export:
-    product_dir = os.path.join(OUTPUT_DIR, channel)
-    os.makedirs(product_dir, exist_ok=True)
-    options_dict = {
-        "outputDir": product_dir,
-        "logLevel": "error",
-        "orgLimit": "2"
-    }
-    options = ' '.join([f"--{opt}='{val}'" for opt, val in options_dict.items()])
-    command = f"inter-server-sync export --channels='{channel}' {options}"
-    command_args = shlex.split(command)
+def main():
+    setup_directories()
+    log_file_path = setup_logging()
+    client, key = create_client()
+    parent_child_map = channel_hierarchy(client, key)
+    selected_parents = user_select_parent(parent_child_map)
+    export_initial(client, key, parent_child_map, selected_parents, log_file_path)
+    export_updates(client, key, parent_child_map, selected_parents, log_file_path)
+    # Change ownership of the base directory recursively
+    subprocess.run(['chown', '-R', f'{RSYNC_USER}.{RSYNC_GROUP}', BASE_DIR], check=True)
+    # Calculate total time and log
+    end_time = datetime.datetime.now()
+    total_time = end_time - datetime.datetime.strptime(TODAY, "%Y-%m-%d")
     with open(log_file_path, "a") as log_file:
-        subprocess.run(command_args, stdout=log_file, stderr=subprocess.STDOUT)
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        completion_message = f"{current_time} Export for channel {channel} completed.\n"
-        log_file.write(completion_message)
+        log_file.write(f"Total execution time: {total_time}\n")
 
-# Change ownership of the base directory recursively
-subprocess.run(['chown', '-R', f'{RSYNC_USER}.{RSYNC_GROUP}', BASE_DIR], check=True)
+if __name__ == "__main__":
+    main()
