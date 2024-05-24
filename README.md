@@ -50,6 +50,15 @@ Import
 - rsync 3.x
 - rsyncuser created with ssh key set without a password for automation
 
+## Install
+
+Copy the disconnected_suma_installer.sh file to the local server host, this is the server
+that will be doing the ISS exports.
+
+```
+sudo sh disconnected_suma_installer.sh
+```
+
 ## Usage
 
 Step 1. Organization creation
