@@ -54,6 +54,13 @@ log() {
     echo "$(date +"%Y-%m-%d %H:%M:%S") - $1" >> "$log_file"
 }
 
+# Updates system using zypper
+update_system() {
+  log "Checking for system updates."
+  zypper ref
+  zypper -n update
+}
+
 # Clear source directory before rsync of new data.
 cleanup() {
   log "Cleaning up directories."
@@ -61,6 +68,7 @@ cleanup() {
   rm -rf "$basedir"/initial/*
 }
 
+update_system
 cleanup
 
 # SSH Configuration variables.
