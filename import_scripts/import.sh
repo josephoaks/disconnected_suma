@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # Script Name: import_sync.sh
@@ -8,11 +9,6 @@
 #              and other necessary credentials.
 #
 # Usage: ./import_sync.sh
-#
-# In SUMA on both the target and host server you need to create an Organization,
-# this will be used for the importing of the data. Save this org_name and its
-# password in the import.yaml file inside the `scripts` directory along side the
-# `import.sh` script.
 #
 # YAML Configuration Requirements:
 #   - host: The hostname or IP address of the remote server.
@@ -93,7 +89,5 @@ process_directory() {
   done
 }
 
-log "Start of import process."
 process_directory "$basedir/updates"
 process_directory "$basedir/initial"
-log "End of import process."
