@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 
 """
@@ -9,38 +10,30 @@ Description: This script is used for the initial export of channels for the
              This script automates the process of exporting channel data from a
              specified channel, by choosing which parent channle to export,
              then clearing the directory before use, and handling file and user
-             permissions. It reads channel names from a specified text file and
-             executes a sync/export command for each.
+             permissions.
 
              The script logs each export operation to a daily log file and
              changes the ownership of the exported files to a specific user and
              group.
-
-             Lastly the script creates a text file to be used by the import.sh
-             on the target server in order to import the exports cleanly and in
-             order.
 
 Constants:
              BASE_DIR - Base directory from which channels are exported.
              RSYNC_USER - Username owning the exported files.
              RSYNC_GROUP - Group owning the exported files.
              LOG_DIR - Directory where logs are stored.
-             CHANNELS_FILE - Path to the file containing channel names, one
-                             channel per line.
              TODAY - Today's date, used for naming the log file.
 
 Instructions:
-             1. THIS SCRIPT REQUIRES THE USE OF THE `mgr-sync -s refresh`
+             1. THIS SCRIPT REQUIRES THE USE OF THE mgr-sync -s refresh
                 CREDENTIALS FILE!
-             2. Ensure paths for BASE_DIR, LOG_DIR, and CHANNELS_FILE are
-                correctly set according to your system configuration.
+             2. Ensure paths for BASE_DIR, and LOG_DIR, are correctly set 
+                according to your system configuration.
              3. Adjust RSYNC_USER and RSYNC_GROUP to match appropriate user
                 and group on your system.
-             4. Ensure 'channels.txt' contains the list of channels to be
-                exported, one per line.
-             5. Run this script with sufficient permissions to access and modify
+             4. Run this script with sufficient permissions to access and modify
                 the specified directories and files.
 """
+
 
 import os
 import shutil
@@ -60,7 +53,6 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 RSYNC_USER = "rsyncuser"
 RSYNC_GROUP = "users"
-CHANNELS_FILE = os.path.join(SCRIPTS_DIR, "channels.txt")
 TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
 FIXED_DATE = datetime.date(2050, 1, 1)  # Fixed 'packagesOnlyAfter' date
 COMMON_OPTIONS = {'orgLimit': '2', 'logLevel': 'error'}  # Common options for export commands
@@ -134,31 +126,34 @@ def user_select_parent(parent_child_map):
 
 def export_initial(client, key, parent_child_map, selected_parents, log_file_path):
     options_str = command_options(COMMON_OPTIONS)
+    date_str = FIXED_DATE.strftime('%Y-%m-%d')
     for parent in selected_parents:
-        channels_to_export = [parent] + parent_child_map[parent]  # Include parent and its children
-        for channel in channels_to_export:
-            initial_dir = os.path.join(INITIAL_DIR, channel)
-            os.makedirs(initial_dir, exist_ok=True)
-            initial_export_command = f"inter-server-sync export --channels='{channel}' --outputDir='{initial_dir}' {options_str}"
-            subprocess.run(shlex.split(initial_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            # Log to file
-            with open(log_file_path, "a") as log_file:
-                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                log_file.write(f"{current_time} Initial export for channel {channel} completed.\n")
+        initial_dir = os.path.join(INITIAL_DIR, parent)
+        os.makedirs(initial_dir, exist_ok=True)
+        initial_export_command = f"inter-server-sync export --channel-with-children='{parent}' --outputDir='{initial_dir}' {options_str} --packagesOnlyAfter='{date_str}'"
+        result = subprocess.run(shlex.split(initial_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            print(f"Error during export of {parent}: {result.stderr.decode('utf-8')}")
+        # Log to file
+        with open(log_file_path, "a") as log_file:
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            log_file.write(f"{current_time} Initial export for channel {parent} completed.\n")
 
 def export_updates(client, key, parent_child_map, selected_parents, log_file_path):
     options_str = command_options(COMMON_OPTIONS)
-    date_str = FIXED_DATE.strftime('%Y-%m-%d')
     for parent in selected_parents:
-        if parent_child_map[parent]:  # Check if there are child channels
-            updates_dir = os.path.join(UPDATES_DIR, parent)
-            os.makedirs(updates_dir, exist_ok=True)
-            updates_export_command = f"inter-server-sync export --channel-with-children='{parent}' --outputDir='{updates_dir}' {options_str} --packagesOnlyAfter='{date_str}'"
-            subprocess.run(shlex.split(updates_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        channels_to_export = [parent] + parent_child_map[parent]  # Include parent and its children
+        for channel in channels_to_export:
+            update_dir = os.path.join(UPDATES_DIR, channel)
+            os.makedirs(update_dir, exist_ok=True)
+            update_export_command = f"inter-server-sync export --channels='{channel}' --outputDir='{update_dir}' {options_str}"
+            result = subprocess.run(shlex.split(update_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode != 0:
+                print(f"Error during export of {channel}: {result.stderr.decode('utf-8')}")
             # Log to file
             with open(log_file_path, "a") as log_file:
                 current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                log_file.write(f"{current_time} Updates export for parent channel {parent} with children completed.\n")
+                log_file.write(f"{current_time} Updates export for channel {channel} completed.\n")
 
 def main():
     setup_directories()
@@ -175,6 +170,7 @@ def main():
     total_time = end_time - datetime.datetime.strptime(TODAY, "%Y-%m-%d")
     with open(log_file_path, "a") as log_file:
         log_file.write(f"Total execution time: {total_time}\n")
+    client.auth.logout(key)
 
 if __name__ == "__main__":
     main()
