@@ -33,7 +33,6 @@ Instructions:
                 the specified directories and files.
 """
 
-
 import os
 import shutil
 import datetime
@@ -78,7 +77,24 @@ def create_client():
     manager_url = f"https://{suma_fqdn}/rpc/api"
     context = ssl.create_default_context()
     client = ServerProxy(manager_url, context=context)
-    key = client.auth.login(manager_login, manager_password)
+    try:
+        key = client.auth.login(manager_login, manager_password)
+        return client, key
+    except Fault as e:
+        print(f"Error logging in: {e}")
+        exit(1)
+
+def is_session_valid(client, key):
+    try:
+        client.auth.whoami(key)
+        return True
+    except Fault:
+        return False
+
+def refresh_session(client, key):
+    if not is_session_valid(client, key):
+        print("Session expired. Re-logging in.")
+        return create_client()
     return client, key
 
 def command_options(options_dict):
@@ -97,7 +113,7 @@ def channel_hierarchy(client, key):
                     parent_child_map[parent_label] = []
                 parent_child_map[parent_label].append(channel["label"])
             else:
-                parent_child_map[channel["label"]] = []  # Parent with no children listed as an empty list
+                parent_child_map[channel["label"]] = []
         return parent_child_map
     except Fault as e:
         print(f"Error fetching channel hierarchy: {e}")
@@ -123,36 +139,18 @@ def user_select_parent(parent_child_map):
             print("Please enter a valid integer.")
     return selected_parents
 
-def export_initial(client, key, parent_child_map, selected_parents, log_file_path):
-    options_str = command_options(COMMON_OPTIONS)
-    date_str = FIXED_DATE.strftime('%Y-%m-%d')
-    for parent in selected_parents:
-        initial_dir = os.path.join(INITIAL_DIR, parent)
-        os.makedirs(initial_dir, exist_ok=True)
-        initial_export_command = f"inter-server-sync export --channel-with-children='{parent}' --outputDir='{initial_dir}' {options_str} --packagesOnlyAfter='{date_str}'"
-        result = subprocess.run(shlex.split(initial_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode != 0:
-            print(f"Error during export of {parent}: {result.stderr.decode('utf-8')}")
-        # Log to file
-        with open(log_file_path, "a") as log_file:
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            log_file.write(f"{current_time} Initial export for channel {parent} completed.\n")
-
-def export_updates(client, key, parent_child_map, selected_parents, log_file_path):
-    options_str = command_options(COMMON_OPTIONS)
-    for parent in selected_parents:
-        channels_to_export = [parent] + parent_child_map[parent]  # Include parent and its children
-        for channel in channels_to_export:
-            update_dir = os.path.join(UPDATES_DIR, channel)
-            os.makedirs(update_dir, exist_ok=True)
-            update_export_command = f"inter-server-sync export --channels='{channel}' --outputDir='{update_dir}' {options_str}"
-            result = subprocess.run(shlex.split(update_export_command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if result.returncode != 0:
-                print(f"Error during export of {channel}: {result.stderr.decode('utf-8')}")
-            # Log to file
-            with open(log_file_path, "a") as log_file:
-                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                log_file.write(f"{current_time} Updates export for channel {channel} completed.\n")
+def export_channel(client, key, channel, output_dir, log_file_path, options_str, packages_only_after=None):
+    os.makedirs(output_dir, exist_ok=True)
+    command = f"inter-server-sync export --channels='{channel}' --outputDir='{output_dir}' {options_str}"
+    if packages_only_after:
+        command += f" --packagesOnlyAfter='{packages_only_after}'"
+    result = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Error during export of {channel}: {result.stderr.decode('utf-8')}")
+    # Log to file
+    with open(log_file_path, "a") as log_file:
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        log_file.write(f"{current_time} Export for channel {channel} completed.\n")
 
 def main():
     setup_directories()
@@ -160,16 +158,24 @@ def main():
     client, key = create_client()
     parent_child_map = channel_hierarchy(client, key)
     selected_parents = user_select_parent(parent_child_map)
-    export_initial(client, key, parent_child_map, selected_parents, log_file_path)
-    export_updates(client, key, parent_child_map, selected_parents, log_file_path)
-    # Change ownership of the base directory recursively
+    options_str = command_options(COMMON_OPTIONS)
+
+    for parent in selected_parents:
+        client, key = refresh_session(client, key)
+        export_channel(client, key, parent, os.path.join(INITIAL_DIR, parent), log_file_path, options_str, FIXED_DATE.strftime('%Y-%m-%d'))
+        for child in parent_child_map[parent]:
+            client, key = refresh_session(client, key)
+            export_channel(client, key, child, os.path.join(UPDATES_DIR, child), log_file_path, options_str)
+
     subprocess.run(['chown', '-R', f'{RSYNC_USER}.{RSYNC_GROUP}', BASE_DIR], check=True)
-    # Calculate total time and log
-    end_time = datetime.datetime.now()
-    total_time = end_time - datetime.datetime.strptime(TODAY, "%Y-%m-%d")
+    total_time = datetime.datetime.now() - datetime.datetime.strptime(TODAY, "%Y-%m-%d")
     with open(log_file_path, "a") as log_file:
         log_file.write(f"Total execution time: {total_time}\n")
-    client.auth.logout(key)
+
+    try:
+        client.auth.logout(key)
+    except Fault as e:
+        print(f"Error during logout: {e}")
 
 if __name__ == "__main__":
     main()
