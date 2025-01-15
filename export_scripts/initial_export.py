@@ -25,7 +25,7 @@ Constants:
 Instructions:
              1. THIS SCRIPT REQUIRES THE USE OF THE mgr-sync -s refresh
                 CREDENTIALS FILE!
-             2. Ensure paths for BASE_DIR, and LOG_DIR, are correctly set 
+             2. Ensure paths for BASE_DIR, and LOG_DIR, are correctly set
                 according to your system configuration.
              3. Adjust RSYNC_USER and RSYNC_GROUP to match appropriate user
                 and group on your system.
@@ -48,7 +48,6 @@ BASE_DIR = "/mnt"
 INITIAL_DIR = os.path.join(BASE_DIR, "export/initial")
 UPDATES_DIR = os.path.join(BASE_DIR, "export/updates")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
-SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 RSYNC_USER = "rsyncuser"
 RSYNC_GROUP = "users"
 TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -83,19 +82,6 @@ def create_client():
     except Fault as e:
         print(f"Error logging in: {e}")
         exit(1)
-
-def is_session_valid(client, key):
-    try:
-        client.auth.whoami(key)
-        return True
-    except Fault:
-        return False
-
-def refresh_session(client, key):
-    if not is_session_valid(client, key):
-        print("Session expired. Re-logging in.")
-        return create_client()
-    return client, key
 
 def command_options(options_dict):
     """Generate command line options string from dictionary."""
@@ -161,21 +147,14 @@ def main():
     options_str = command_options(COMMON_OPTIONS)
 
     for parent in selected_parents:
-        client, key = refresh_session(client, key)
         export_channel(client, key, parent, os.path.join(INITIAL_DIR, parent), log_file_path, options_str, FIXED_DATE.strftime('%Y-%m-%d'))
         for child in parent_child_map[parent]:
-            client, key = refresh_session(client, key)
             export_channel(client, key, child, os.path.join(UPDATES_DIR, child), log_file_path, options_str)
 
     subprocess.run(['chown', '-R', f'{RSYNC_USER}.{RSYNC_GROUP}', BASE_DIR], check=True)
     total_time = datetime.datetime.now() - datetime.datetime.strptime(TODAY, "%Y-%m-%d")
     with open(log_file_path, "a") as log_file:
         log_file.write(f"Total execution time: {total_time}\n")
-
-    try:
-        client.auth.logout(key)
-    except Fault as e:
-        print(f"Error during logout: {e}")
 
 if __name__ == "__main__":
     main()
