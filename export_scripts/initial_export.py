@@ -2,14 +2,13 @@
 
 """
 Description: This script is used for the initial export of channels for the
-             customer. This means if they are a new to SUMA, or an existing
+             customer. This means if they are new to SUMA, or an existing
              user and we don't know when they got their last update from the
              SCC, or they are getting a new channel for i.e. a new Service Pack.
 
              This script automates the process of exporting channel data from a
-             specified channel, by choosing which parent channle to export,
-             then clearing the directory before use, and handling file and user
-             permissions.
+             specified channel, by choosing which parent channel to export,
+             and optionally exporting individual child channels.
 
              The script logs each export operation to a daily log file and
              changes the ownership of the exported files to a specific user and
@@ -105,25 +104,60 @@ def channel_hierarchy(client, key):
         print(f"Error fetching channel hierarchy: {e}")
         exit(1)
 
-def user_select_parent(parent_child_map):
-    parents = list(parent_child_map.keys())
-    selected_parents = []
-    print("Please select a parent channel to export (Enter 0 when done):")
-    for i, parent in enumerate(parents, start=1):
-        print(f"{i}. {parent}")
-    while True:
-        try:
-            choice = int(input("Enter your choice: ")) - 1
-            if choice == -1:
-                break
-            if 0 <= choice < len(parents):
-                selected_parents.append(parents[choice])
-                print(f"Selected {parents[choice]}. Add more or press 0 to continue.")
-            else:
-                print("Invalid choice, please try again.")
-        except ValueError:
-            print("Please enter a valid integer.")
-    return selected_parents
+def user_selection(parent_child_map):
+    print("Is this a new parent or a new child channel?")
+    print("1. New Parent Channel")
+    print("2. New Child Channel")
+    choice = input("Enter your choice (1 or 2): ").strip()
+
+    if choice == '1':
+        print("Select a parent channel to export:")
+        parents = list(parent_child_map.keys())
+        for i, parent in enumerate(parents, start=1):
+            print(f"{i}. {parent}")
+        while True:
+            try:
+                parent_choice = int(input("Enter the number of the parent channel: ")) - 1
+                if 0 <= parent_choice < len(parents):
+                    return [(parents[parent_choice], None)]
+                else:
+                    print("Invalid choice. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    elif choice == '2':
+        print("Select the parent channel for the new child:")
+        parents = list(parent_child_map.keys())
+        for i, parent in enumerate(parents, start=1):
+            print(f"{i}. {parent}")
+        while True:
+            try:
+                parent_choice = int(input("Enter the number of the parent channel: ")) - 1
+                if 0 <= parent_choice < len(parents):
+                    selected_parent = parents[parent_choice]
+                    break
+                else:
+                    print("Invalid choice. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+        print(f"Select a child channel under {selected_parent}:")
+        children = parent_child_map[selected_parent]
+        for i, child in enumerate(children, start=1):
+            print(f"{i}. {child}")
+        while True:
+            try:
+                child_choice = int(input("Enter the number of the child channel: ")) - 1
+                if 0 <= child_choice < len(children):
+                    return [(selected_parent, children[child_choice])]
+                else:
+                    print("Invalid choice. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    else:
+        print("Invalid choice. Please restart the script and choose 1 or 2.")
+        exit(1)
 
 def export_channel(client, key, channel, output_dir, log_file_path, options_str, packages_only_after=None):
     os.makedirs(output_dir, exist_ok=True)
@@ -143,13 +177,16 @@ def main():
     log_file_path = setup_logging()
     client, key = create_client()
     parent_child_map = channel_hierarchy(client, key)
-    selected_parents = user_select_parent(parent_child_map)
+    selected_channels = user_selection(parent_child_map)
     options_str = command_options(COMMON_OPTIONS)
 
-    for parent in selected_parents:
-        export_channel(client, key, parent, os.path.join(INITIAL_DIR, parent), log_file_path, options_str, FIXED_DATE.strftime('%Y-%m-%d'))
-        for child in parent_child_map[parent]:
+    for parent, child in selected_channels:
+        if child:
             export_channel(client, key, child, os.path.join(UPDATES_DIR, child), log_file_path, options_str)
+        else:
+            export_channel(client, key, parent, os.path.join(INITIAL_DIR, parent), log_file_path, options_str, FIXED_DATE.strftime('%Y-%m-%d'))
+            for child_channel in parent_child_map[parent]:
+                export_channel(client, key, child_channel, os.path.join(UPDATES_DIR, child_channel), log_file_path, options_str)
 
     subprocess.run(['chown', '-R', f'{RSYNC_USER}.{RSYNC_GROUP}', BASE_DIR], check=True)
     total_time = datetime.datetime.now() - datetime.datetime.strptime(TODAY, "%Y-%m-%d")
